@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>保險業務實用工具箱</title>
+<style>
+  body { font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; background:#f5f6fa; margin:0; }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 16px; }
+  .card { background:#fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  h1 { font-size: 1.1rem; font-weight: 700; margin: 0 0 4px; }
+  p.hint { font-size: 0.75rem; color: #888; margin: 0; }
+  label { font-size: 0.85rem; color: #555; display:block; margin-top: 10px; }
+  label:first-child { margin-top: 0; }
+  select, input {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 1rem;
+    margin-top: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+  }
+  input[type="date"], input[type="datetime-local"] {
+    min-height: 42px;
+  }
+  .row { display:flex; gap: 8px; }
+  .row > div { flex: 1; min-width: 0; }
+  button#calcBtn { width:100%; background:#111; color:#fff; border:none; border-radius: 8px; padding: 14px; font-size: 1rem; font-weight:600; margin-top: 16px; }
+  button#calcBtn:disabled { background:#999; }
+  button#copyBtn { width:100%; border: 1px solid #ddd; background:#fff; border-radius: 8px; padding: 10px; font-size: 0.85rem; margin-top: 10px; }
+  .big-result { font-size: 1.8rem; font-weight: 700; }
+  .mid-result { font-size: 1.5rem; font-weight: 700; }
+  .result-row { display:flex; gap: 16px; flex-wrap: wrap; }
+  .result-row > div { flex: 1; min-width: 120px; }
+  .result-label { font-size: 0.8rem; color: #888; margin-bottom: 2px; }
+  .sub { font-size: 1rem; color: #666; margin-top: 6px; line-height: 1.5; }
+  .alert-box { margin-top: 8px; font-size: 0.9rem; padding: 8px; border-radius: 8px; background: #fff8e1; }
+  .alert-source { font-size: 0.75rem; color: #999; margin-top: 4px; }
+  .error { color: #d33; font-size: 0.85rem; margin-top: 8px; }
+  .hidden { display:none; }
+  details { margin-top: 12px; font-size: 0.7rem; color: #999; }
+  summary { cursor: pointer; }
+  pre { background:#f5f5f5; padding: 8px; border-radius: 6px; overflow-x:auto; white-space: pre-wrap; font-size: 0.7rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 頂部區塊 -->
+  <div class="card">
+    <h1>保險業務實用工具箱</h1>
+    <p class="hint">本工具不留存任何個資，所有計算即時運算即丟。法規提示僅供參考，不構成法律意見，請以主管機關最新公告為準。</p>
+  </div>
+
+  <!-- 核心控制區 -->
+  <div class="card">
+    <label>選擇工具</label>
+    <select id="moduleSelect">
+      <option value="insuranceAge">保險年齡計算</option>
+      <option value="travelInsurance">旅平險天數試算</option>
+      <option value="adultBMI">成人 BMI</option>
+      <option value="childBMI">兒少 BMI</option>
+    </select>
+  </div>
+
+  <!-- 動態輸入區 -->
+  <div class="card" id="inputCard">
+    <div id="inputArea"></div>
+    <button id="calcBtn">計算</button>
+    <p id="errorMsg" class="error hidden"></p>
+  </div>
+
+  <!-- 結果輸出區 -->
+  <div id="resultArea" class="card hidden">
+    <div id="resultBody"></div>
+    <button id="copyBtn">一鍵複製</button>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// GitHub Pages 版本設定
+// 請將下方 API_URL 換成你 GAS 專案「部署 > 網頁應用程式」取得的 /exec 網址
+// 例如：https://script.google.com/macros/s/AKfycb.../exec
+// ============================================================
+const API_URL = 'https://script.google.com/macros/s/AKfycbxDpojGT76F5mc_vtnuI9tltvp7Sl1ItCLiJIK-FhIaa9_Y9FBSrqmTHpfVqz8VJieycg/exec';
+
+const templates = {
+  insuranceAge: `
+    <label>出生日期 <span style="color:#d33">*</span></label>
+    <input type="date" id="f_birthDate" required>
+    <label>預計投保日期</label>
+    <input type="date" id="f_effectiveDate">
+  `,
+  travelInsurance: `
+    <label>出發時間（集合/交通工具出發時間）</label>
+    <input type="datetime-local" id="f_departure">
+    <label>抵達時間（解散/交通工具到達時間）</label>
+    <input type="datetime-local" id="f_arrival">
+    <div class="row">
+      <div>
+        <label>出發前緩衝(hr)</label>
+        <input type="number" id="f_beforeBuffer" value="3" inputmode="decimal" pattern="[0-9]*">
+      </div>
+      <div>
+        <label>抵達後緩衝(hr)</label>
+        <input type="number" id="f_afterBuffer" value="3" inputmode="decimal" pattern="[0-9]*">
+      </div>
+    </div>
+  `,
+  adultBMI: `
+    <label>身高 (cm)</label>
+    <input type="number" id="f_height" inputmode="decimal" step="0.1">
+    <label>體重 (kg)</label>
+    <input type="number" id="f_weight" inputmode="decimal" step="0.1">
+  `,
+  childBMI: `
+    <label>出生日期 <span style="color:#d33">*</span></label>
+    <input type="date" id="f_birthDate" required>
+    <label>預計投保日期（留空預設今天）</label>
+    <input type="date" id="f_effectiveDate">
+    <label>性別</label>
+    <select id="f_gender">
+      <option value="M">男</option>
+      <option value="F">女</option>
+    </select>
+    <label>身高 (cm)（選填，不知道可留空）</label>
+    <input type="number" id="f_height" inputmode="decimal" step="0.1">
+    <label>體重 (kg)（選填，不知道可留空）</label>
+    <input type="number" id="f_weight" inputmode="decimal" step="0.1">
+  `
+};
+
+const moduleSelect = document.getElementById('moduleSelect');
+const inputArea = document.getElementById('inputArea');
+const resultArea = document.getElementById('resultArea');
+const resultBody = document.getElementById('resultBody');
+const errorMsg = document.getElementById('errorMsg');
+const calcBtn = document.getElementById('calcBtn');
+let lastCopyText = '';
+
+function renderInputs() {
+  inputArea.innerHTML = templates[moduleSelect.value];
+  resultArea.classList.add('hidden');
+  errorMsg.classList.add('hidden');
+
+  // 預計投保日期預設帶入今天，方便測試時直接調整（出生日期不預設，避免誤導）
+  const effectiveInput = document.getElementById('f_effectiveDate');
+  if (effectiveInput) {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    effectiveInput.value = `${yyyy}-${mm}-${dd}`;
+  }
+}
+moduleSelect.addEventListener('change', renderInputs);
+renderInputs();
+
+function buildPayload() {
+  const m = moduleSelect.value;
+  if (m === 'insuranceAge') {
+    return { module: m, data: {
+      birthDate: document.getElementById('f_birthDate').value,
+      effectiveDate: document.getElementById('f_effectiveDate').value || undefined
+    }};
+  }
+  if (m === 'travelInsurance') {
+    return { module: m, data: {
+      departureDateTime: document.getElementById('f_departure').value,
+      arrivalDateTime: document.getElementById('f_arrival').value,
+      beforeBufferHours: Number(document.getElementById('f_beforeBuffer').value),
+      afterBufferHours: Number(document.getElementById('f_afterBuffer').value)
+    }};
+  }
+  if (m === 'adultBMI') {
+    return { module: m, data: {
+      heightCm: Number(document.getElementById('f_height').value),
+      weightKg: Number(document.getElementById('f_weight').value)
+    }};
+  }
+  if (m === 'childBMI') {
+    const heightVal = document.getElementById('f_height').value;
+    const weightVal = document.getElementById('f_weight').value;
+    return { module: m, data: {
+      birthDate: document.getElementById('f_birthDate').value,
+      effectiveDate: document.getElementById('f_effectiveDate').value || undefined,
+      gender: document.getElementById('f_gender').value,
+      heightCm: heightVal ? Number(heightVal) : undefined,
+      weightKg: weightVal ? Number(weightVal) : undefined
+    }};
+  }
+}
+
+function renderResult(module, result) {
+  let html = '';
+  if (module === 'insuranceAge') {
+    html = `<div class="big-result">保險年齡 ${result.insuranceAge} 歲</div>
+      <p class="sub">足歲 ${result.actualAge} 歲・下次換歲 ${result.nextBumpDate}（倒數 ${result.countdownDays} 天）</p>
+      ${result.alerts.map(a => `<div class="alert-box">${a.text}<div class="alert-source">法源：${a.source}</div></div>`).join('')}`;
+  } else if (module === 'travelInsurance') {
+    html = `<div class="big-result">${result.totalDays} 天</div>
+      <p class="sub">起：${result.suggestedStart}　迄：${result.suggestedEnd}（完整 ${result.totalDays} 天涵蓋）</p>
+      <p class="sub">實際需求涵蓋至：${result.neededEnd}</p>`;
+  } else if (module === 'adultBMI') {
+    html = `<div class="big-result">${result.bmi}</div>
+      <p class="sub">分類：${result.category}（法源：${result.source}）</p>
+      <p class="sub">該身高健康體重範圍：${result.healthyWeightMin} - ${result.healthyWeightMax} kg</p>`;
+  } else if (module === 'childBMI') {
+    if (result.routedTo === 'adultBMI') {
+      html = `<p class="sub">${result.message}</p>`;
+      if (result.adultBMIResult) {
+        html += `<div class="big-result">${result.adultBMIResult.bmi}</div>
+          <p class="sub">分類：${result.adultBMIResult.category}</p>
+          <p class="sub">健康體重範圍：${result.adultBMIResult.healthyWeightMin} - ${result.adultBMIResult.healthyWeightMax} kg</p>`;
+      }
+    } else {
+      html = `<div class="result-row">
+          <div>
+            <div class="result-label">身高參考範圍 (cm)</div>
+            <div class="mid-result">${result.heightRangeCm.min} - ${result.heightRangeCm.max}</div>
+          </div>
+          <div>
+            <div class="result-label">體重參考範圍 (kg)</div>
+            <div class="mid-result">${result.weightRangeKg.min} - ${result.weightRangeKg.max}</div>
+          </div>
+        </div>
+        <p class="sub">對照約 ${result.matchedAgeMonths} 月齡（保險年齡 ${result.insuranceAge} 歲）</p>`;
+      if (result.bmi !== undefined) {
+        html += `<div class="alert-box">
+          <div class="result-label">輸入身高體重之 BMI</div>
+          <div class="mid-result">${result.bmi}　${result.bmiCategory}</div>
+          <div class="alert-source">法源：${result.bmiSource}</div></div>`;
+      }
+      html += `<p class="alert-source">${result.disclaimer}</p>`;
+    }
+  }
+  resultBody.innerHTML = html;
+  lastCopyText = result.copyText || '';
+  resultArea.classList.remove('hidden');
+}
+
+function handleSuccess(response) {
+  calcBtn.disabled = false;
+  calcBtn.textContent = '計算';
+  if (!response.ok) {
+    errorMsg.textContent = '計算失敗：' + response.error;
+    errorMsg.classList.remove('hidden');
+    resultArea.classList.add('hidden');
+    return;
+  }
+  renderResult(response.module, response.result);
+}
+
+function handleFailure(error) {
+  calcBtn.disabled = false;
+  calcBtn.textContent = '計算';
+  errorMsg.textContent = '呼叫失敗：' + (error.message || error);
+  errorMsg.classList.remove('hidden');
+  resultArea.classList.add('hidden');
+}
+
+calcBtn.addEventListener('click', () => {
+  errorMsg.classList.add('hidden');
+
+  // 出生日期為模組一、四之必填欄位
+  const birthDateInput = document.getElementById('f_birthDate');
+  if (birthDateInput && !birthDateInput.value) {
+    errorMsg.textContent = '請填寫出生日期';
+    errorMsg.classList.remove('hidden');
+    resultArea.classList.add('hidden');
+    return;
+  }
+
+  calcBtn.disabled = true;
+  calcBtn.textContent = '計算中…';
+  const payload = buildPayload();
+
+  // GitHub Pages 正式版：改用 fetch 呼叫 GAS /exec 網址（doPost）。
+  // 採 text/plain 送出，避開瀏覽器 CORS preflight（後端 doPost 邏輯已就緒，無需調整）。
+  fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify(payload)
+  })
+    .then(res => res.json())
+    .then(handleSuccess)
+    .catch(handleFailure);
+});
+
+document.getElementById('copyBtn').addEventListener('click', () => {
+  navigator.clipboard.writeText(lastCopyText);
+  const btn = document.getElementById('copyBtn');
+  const orig = btn.textContent;
+  btn.textContent = '已複製 ✓';
+  setTimeout(() => btn.textContent = orig, 1200);
+});
+</script>
+</body>
+</html>
