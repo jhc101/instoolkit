@@ -84,6 +84,11 @@
 </div>
 
 <script>
+// GAS 部署後的 /exec 網址，兩邊部署方式共用同一份程式碼：
+// - GitHub Pages：務必填入實際的 GAS /exec 網址（Apps Script 部署 > 新增部署作業 > 網頁應用程式）
+// - GAS HtmlService 內開啟（doGet 無參數時直接回傳本頁面）：與本頁同源，此常數一樣有效，不需另外處理
+const API_URL = 'https://script.google.com/macros/s/AKfycbxDpojGT76F5mc_vtnuI9tltvp7Sl1ItCLiJIK-FhIaa9_Y9FBSrqmTHpfVqz8VJieycg/exec'; // TODO: 替換成實際的 GAS /exec 部署網址
+
 const templates = {
   insuranceAge: `
     <label>出生日期 <span style="color:#d33">*</span></label>
@@ -337,12 +342,20 @@ calcBtn.addEventListener('click', () => {
   calcBtn.disabled = true;
   calcBtn.textContent = '計算中…';
   const payload = buildPayload();
-  // 直接呼叫後端 serverCalc()，同一個 GAS 網頁應用程式內，不會有 CORS 問題，
-  // 跨裝置（手機/平板/其他電腦）只要打開同一個 /exec 網址即可測試，不用另外設定任何網址。
-  google.script.run
-    .withSuccessHandler(handleSuccess)
-    .withFailureHandler(handleFailure)
-    .serverCalc(payload.module, payload.data);
+  // 改用 fetch 呼叫 GAS /exec 網址，Content-Type 用 text/plain 以避開 CORS preflight
+  // （瀏覽器對 text/plain 的 POST 視為「簡單請求」，不會先發 OPTIONS 預檢，GAS 亦不需額外處理 CORS 標頭）
+  // GitHub Pages 與 GAS HtmlService 內開啟兩種情境皆適用同一套呼叫方式
+  fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  })
+    .then(res => {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    })
+    .then(handleSuccess)
+    .catch(handleFailure);
 });
 
 document.getElementById('copyBtn').addEventListener('click', () => {
