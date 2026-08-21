@@ -2,6 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>保險業務實用工具箱</title>
 <style>
   body { font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; background:#f5f6fa; margin:0; }
@@ -65,6 +66,7 @@
       <option value="adultBMI">成人 BMI</option>
       <option value="childBMI">兒少 BMI</option>
       <option value="policyIRR">保單 IRR 試算</option>
+      <option value="retirementPlanning">退休金規劃試算</option>
     </select>
   </div>
 
@@ -144,6 +146,27 @@ const templates = {
     <input type="date" id="f_queryDate" required>
     <label>該日解約金金額</label>
     <input type="number" id="f_cashValue" inputmode="decimal" step="1">
+  `,
+  retirementPlanning: `
+    <label>退休生活型態</label>
+    <select id="f_lifestyle">
+      <option value="luxury">隨心所欲，年年出國（年約72萬）</option>
+      <option value="moderate">平安自在，含飴弄孫（年約48萬）</option>
+      <option value="simple">簡簡單單，休養生息（年約24萬）</option>
+      <option value="custom">自訂金額</option>
+    </select>
+    <div id="customCostWrap" class="hidden">
+      <label>年生活費（元）</label>
+      <input type="number" id="f_customAnnualCost" inputmode="numeric" step="1">
+    </div>
+    <label>目前年紀</label>
+    <input type="number" id="f_currentAge" inputmode="numeric" step="1">
+    <label>預計退休年齡</label>
+    <input type="number" id="f_retireAge" inputmode="numeric" step="1">
+    <label>自訂投資報酬率 (%)（選填，不填則只比較抽屜與銀行1%定存）</label>
+    <input type="number" id="f_customRate" inputmode="decimal" step="0.1">
+    <label>每月可投資金額（選填，填寫後會額外反推所需報酬率）</label>
+    <input type="number" id="f_monthlyInvest" inputmode="numeric" step="1">
   `
 };
 
@@ -174,6 +197,14 @@ function renderInputs() {
   const queryDateInput = document.getElementById('f_queryDate');
   if (queryDateInput) {
     queryDateInput.value = todayStr;
+  }
+
+  const lifestyleSelect = document.getElementById('f_lifestyle');
+  const customCostWrap = document.getElementById('customCostWrap');
+  if (lifestyleSelect && customCostWrap) {
+    lifestyleSelect.addEventListener('change', () => {
+      customCostWrap.classList.toggle('hidden', lifestyleSelect.value !== 'custom');
+    });
   }
 }
 moduleSelect.addEventListener('change', renderInputs);
@@ -219,6 +250,19 @@ function buildPayload() {
       policyEffectiveDate: document.getElementById('f_policyEffectiveDate').value,
       queryDate: document.getElementById('f_queryDate').value,
       cashValue: Number(document.getElementById('f_cashValue').value)
+    }};
+  }
+  if (m === 'retirementPlanning') {
+    const customRateVal = document.getElementById('f_customRate').value;
+    const monthlyInvestVal = document.getElementById('f_monthlyInvest').value;
+    return { module: m, data: {
+      lifestyle: document.getElementById('f_lifestyle').value,
+      customAnnualCost: document.getElementById('f_lifestyle').value === 'custom'
+        ? Number(document.getElementById('f_customAnnualCost').value) : undefined,
+      currentAge: Number(document.getElementById('f_currentAge').value),
+      retireAge: Number(document.getElementById('f_retireAge').value),
+      customRate: customRateVal || undefined,
+      monthlyInvest: monthlyInvestVal || undefined
     }};
   }
 }
@@ -274,6 +318,43 @@ function renderResult(module, result) {
     }
     html += `<div class="alert-box">${result.leverageNote}<div class="alert-source">試算說明</div></div>
       <div class="alert-box">${result.precisionNote}<div class="alert-source">試算說明</div></div>`;
+  } else if (module === 'retirementPlanning') {
+    html = `<div class="big-result">NT$ ${result.targetTotal.toLocaleString()}</div>
+      <p class="sub">退休後生活 ${result.yearsInRetirement} 年（${result.retireAge}歲→85歲）・${result.lifestyleLabel}（年 ${result.annualLivingCost.toLocaleString()} 元）</p>
+      <div class="result-row">
+        <div>
+          <div class="result-label">抽屜存錢（每年）</div>
+          <div class="mid-result">${result.pmtDrawer.toLocaleString()}</div>
+        </div>
+        <div>
+          <div class="result-label">銀行1%定存（每年）</div>
+          <div class="mid-result">${result.pmtBank1Percent.toLocaleString()}</div>
+        </div>`;
+    if (result.pmtCustomRate !== undefined) {
+      html += `<div>
+          <div class="result-label">自訂 ${result.customRatePercent}%（每年）</div>
+          <div class="mid-result">${result.pmtCustomRate.toLocaleString()}</div>
+        </div>`;
+    }
+    html += `</div>`;
+    if (result.requiredRateResult) {
+      const monthlyStr = result.monthlyInvest.toLocaleString();
+      const annualStr = result.annualInvest.toLocaleString();
+      html += `<div style="margin-top:16px;padding-top:16px;border-top:1px solid #eee;">
+        <div class="result-label">每月投入 NT$${monthlyStr}（年投入 NT$${annualStr}）</div>`;
+      if (result.requiredRateResult.rateSufficientAtZero) {
+        html += `<div class="big-result">免額外報酬率</div>
+          <p class="sub">不需額外投資報酬率即可達成目標</p>`;
+      } else if (result.requiredRateResult.solved) {
+        html += `<div class="big-result">${result.requiredRatePercent}%</div>
+          <p class="sub">所需年化報酬率，方可達成退休金目標</p>`;
+      } else {
+        html += `<div class="big-result">無解</div>
+          <p class="sub">即使報酬率達500%仍無法達成目標，建議提高月投入或延後退休年齡</p>`;
+      }
+      html += `</div>`;
+    }
+    html += `<div class="alert-box">${result.assumptionNote}<div class="alert-source">試算說明</div></div>`;
   }
   resultBody.innerHTML = html;
   lastCopyText = result.copyText || '';
@@ -333,6 +414,30 @@ calcBtn.addEventListener('click', () => {
     }
     if (new Date(queryDateVal) <= new Date(effDateVal)) {
       errorMsg.textContent = '解約金查詢日須晚於保單生效日';
+      errorMsg.classList.remove('hidden');
+      resultArea.classList.add('hidden');
+      return;
+    }
+  }
+
+  // 模組六：目前年紀、預計退休年齡皆為必填，退休年齡須大於目前年紀
+  if (moduleSelect.value === 'retirementPlanning') {
+    const currentAgeVal = document.getElementById('f_currentAge').value;
+    const retireAgeVal = document.getElementById('f_retireAge').value;
+    if (!currentAgeVal || !retireAgeVal) {
+      errorMsg.textContent = '請填寫目前年紀與預計退休年齡';
+      errorMsg.classList.remove('hidden');
+      resultArea.classList.add('hidden');
+      return;
+    }
+    if (Number(retireAgeVal) <= Number(currentAgeVal)) {
+      errorMsg.textContent = '預計退休年齡須大於目前年紀';
+      errorMsg.classList.remove('hidden');
+      resultArea.classList.add('hidden');
+      return;
+    }
+    if (document.getElementById('f_lifestyle').value === 'custom' && !document.getElementById('f_customAnnualCost').value) {
+      errorMsg.textContent = '選擇自訂金額時，請填寫年生活費';
       errorMsg.classList.remove('hidden');
       resultArea.classList.add('hidden');
       return;
