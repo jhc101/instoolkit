@@ -28,6 +28,15 @@
   input[type="date"], input[type="datetime-local"] {
     min-height: 42px;
   }
+  input[type="checkbox"] {
+    -webkit-appearance: checkbox;
+    appearance: checkbox;
+    width: auto;
+    height: 18px;
+    display: inline-block;
+    margin: 0 6px 0 0;
+    vertical-align: middle;
+  }
   .row { display:flex; gap: 8px; }
   .row > div { flex: 1; min-width: 0; }
   button#calcBtn { width:100%; background:#111; color:#fff; border:none; border-radius: 8px; padding: 14px; font-size: 1rem; font-weight:600; margin-top: 16px; }
@@ -67,6 +76,8 @@
       <option value="childBMI">兒少 BMI</option>
       <option value="policyIRR">保單 IRR 試算</option>
       <option value="retirementPlanning">退休金規劃試算</option>
+      <option value="giftTax">贈與稅試算</option>
+      <option value="lifeInsuranceNeed">壽險保額需求試算</option>
     </select>
   </div>
 
@@ -167,6 +178,67 @@ const templates = {
     <input type="number" id="f_customRate" inputmode="decimal" step="0.1">
     <label>每月可投資金額（選填，填寫後會額外反推所需報酬率）</label>
     <input type="number" id="f_monthlyInvest" inputmode="numeric" step="1">
+  `,
+  giftTax: `
+    <label>本年度贈與總額（元）</label>
+    <input type="number" id="f_giftTotal" inputmode="numeric" step="1">
+    <label>各項扣除額（選填，請自行加總後填入單一數字，例如婚嫁扣除額、附負擔房貸等）</label>
+    <input type="number" id="f_giftDeductions" inputmode="numeric" step="1">
+  `,
+  lifeInsuranceNeed: `
+    <label>被保險人目前年紀（僅供參考，不影響試算）</label>
+    <input type="number" id="f_customerAge" inputmode="numeric" step="1">
+
+    <label style="margin-top:16px;">
+      <input type="checkbox" id="f_spouseEnabled" style="width:auto;display:inline-block;margin-right:6px;vertical-align:middle;">
+      需規劃照顧配偶費用
+    </label>
+    <div id="spouseWrap" class="hidden">
+      <label>配偶每年生活費（元）</label>
+      <input type="number" id="f_spouseAnnualCost" inputmode="numeric" step="1">
+      <label>需照顧幾年</label>
+      <input type="number" id="f_spouseCareYears" inputmode="numeric" step="1">
+    </div>
+
+    <label style="margin-top:16px;">子女人數（0-10，無小孩請填0）</label>
+    <input type="number" id="f_childrenCount" inputmode="numeric" step="1" min="0" max="10" value="0">
+    <div id="childrenAgesWrap"></div>
+    <div id="childRouteWrap" class="hidden">
+      <label>教育路線（全家統一）</label>
+      <select id="f_childRoute">
+        <option value="public">平價公立路線</option>
+        <option value="private">精緻私立路線</option>
+      </select>
+    </div>
+
+    <label style="margin-top:16px;">
+      <input type="checkbox" id="f_fatherEnabled" style="width:auto;display:inline-block;margin-right:6px;vertical-align:middle;">
+      需規劃父親孝養金
+    </label>
+    <div id="fatherWrap" class="hidden">
+      <label>父親目前年紀</label>
+      <input type="number" id="f_fatherAge" inputmode="numeric" step="1">
+      <label>每年孝養金（元）</label>
+      <input type="number" id="f_fatherAnnualSupport" inputmode="numeric" step="1">
+      <label>孝養至幾歲（預設85，可覆寫）</label>
+      <input type="number" id="f_fatherEndAge" inputmode="numeric" step="1" value="85">
+    </div>
+
+    <label style="margin-top:16px;">
+      <input type="checkbox" id="f_motherEnabled" style="width:auto;display:inline-block;margin-right:6px;vertical-align:middle;">
+      需規劃母親孝養金
+    </label>
+    <div id="motherWrap" class="hidden">
+      <label>母親目前年紀</label>
+      <input type="number" id="f_motherAge" inputmode="numeric" step="1">
+      <label>每年孝養金（元）</label>
+      <input type="number" id="f_motherAnnualSupport" inputmode="numeric" step="1">
+      <label>孝養至幾歲（預設85，可覆寫）</label>
+      <input type="number" id="f_motherEndAge" inputmode="numeric" step="1" value="85">
+    </div>
+
+    <label style="margin-top:16px;">貸款總額（元，選填，請自行加總所有貸款金額）</label>
+    <input type="number" id="f_loanAmount" inputmode="numeric" step="1">
   `
 };
 
@@ -205,6 +277,40 @@ function renderInputs() {
     lifestyleSelect.addEventListener('change', () => {
       customCostWrap.classList.toggle('hidden', lifestyleSelect.value !== 'custom');
     });
+  }
+
+  // 模組八：checkbox 顯示/隱藏切換 + 子女年齡欄位動態產生
+  const spouseCk = document.getElementById('f_spouseEnabled');
+  const spouseWrap = document.getElementById('spouseWrap');
+  if (spouseCk && spouseWrap) {
+    spouseCk.addEventListener('change', () => spouseWrap.classList.toggle('hidden', !spouseCk.checked));
+  }
+  const fatherCk = document.getElementById('f_fatherEnabled');
+  const fatherWrap = document.getElementById('fatherWrap');
+  if (fatherCk && fatherWrap) {
+    fatherCk.addEventListener('change', () => fatherWrap.classList.toggle('hidden', !fatherCk.checked));
+  }
+  const motherCk = document.getElementById('f_motherEnabled');
+  const motherWrap = document.getElementById('motherWrap');
+  if (motherCk && motherWrap) {
+    motherCk.addEventListener('change', () => motherWrap.classList.toggle('hidden', !motherCk.checked));
+  }
+  const childrenCountInput = document.getElementById('f_childrenCount');
+  const childrenAgesWrap = document.getElementById('childrenAgesWrap');
+  const childRouteWrap = document.getElementById('childRouteWrap');
+  if (childrenCountInput && childrenAgesWrap) {
+    const renderChildAgeInputs = () => {
+      const count = Math.max(0, Math.min(10, Number(childrenCountInput.value) || 0));
+      let html = '';
+      for (let i = 0; i < count; i++) {
+        html += `<label>第 ${i + 1} 個孩子目前年紀</label>
+          <input type="number" id="f_childAge_${i}" inputmode="numeric" step="1" min="0" max="22">`;
+      }
+      childrenAgesWrap.innerHTML = html;
+      childRouteWrap.classList.toggle('hidden', count === 0);
+    };
+    childrenCountInput.addEventListener('input', renderChildAgeInputs);
+    renderChildAgeInputs();
   }
 }
 moduleSelect.addEventListener('change', renderInputs);
@@ -263,6 +369,38 @@ function buildPayload() {
       retireAge: Number(document.getElementById('f_retireAge').value),
       customRate: customRateVal || undefined,
       monthlyInvest: monthlyInvestVal || undefined
+    }};
+  }
+  if (m === 'giftTax') {
+    const deductionsVal = document.getElementById('f_giftDeductions').value;
+    return { module: m, data: {
+      annualGiftTotal: Number(document.getElementById('f_giftTotal').value),
+      deductions: deductionsVal || undefined
+    }};
+  }
+    if (m === 'lifeInsuranceNeed') {
+    const childrenCount = Math.max(0, Math.min(10, Number(document.getElementById('f_childrenCount').value) || 0));
+    const childrenAges = [];
+    for (let i = 0; i < childrenCount; i++) {
+      const ageEl = document.getElementById('f_childAge_' + i);
+      childrenAges.push(ageEl ? Number(ageEl.value) || 0 : 0);
+    }
+    return { module: m, data: {
+      customerAge: document.getElementById('f_customerAge').value ? Number(document.getElementById('f_customerAge').value) : undefined,
+      spouseCareEnabled: document.getElementById('f_spouseEnabled').checked,
+      annualSpouseCost: Number(document.getElementById('f_spouseAnnualCost').value) || 0,
+      spouseCareYears: Number(document.getElementById('f_spouseCareYears').value) || 0,
+      childRoute: document.getElementById('f_childRoute').value,
+      childrenAges: childrenAges,
+      fatherEnabled: document.getElementById('f_fatherEnabled').checked,
+      fatherAge: Number(document.getElementById('f_fatherAge').value) || 0,
+      fatherAnnualSupport: Number(document.getElementById('f_fatherAnnualSupport').value) || 0,
+      fatherEndAge: document.getElementById('f_fatherEndAge').value || 85,
+      motherEnabled: document.getElementById('f_motherEnabled').checked,
+      motherAge: Number(document.getElementById('f_motherAge').value) || 0,
+      motherAnnualSupport: Number(document.getElementById('f_motherAnnualSupport').value) || 0,
+      motherEndAge: document.getElementById('f_motherEndAge').value || 85,
+      loanAmount: Number(document.getElementById('f_loanAmount').value) || 0
     }};
   }
 }
@@ -355,6 +493,26 @@ function renderResult(module, result) {
       html += `</div>`;
     }
     html += `<div class="alert-box">${result.assumptionNote}<div class="alert-source">試算說明</div></div>`;
+  } else if (module === 'giftTax') {
+    html = `<div class="big-result">NT$ ${result.taxAmount.toLocaleString()}</div>
+      <p class="sub">課稅淨額 ${result.taxableBase.toLocaleString()} 元・適用稅率 ${result.taxRatePercent}%・累進差額 ${result.progressiveDiff.toLocaleString()} 元</p>
+      <div class="alert-box">${result.lawNote}<div class="alert-source">法源：遺產及贈與稅法第19、22條</div></div>
+      <div class="alert-box">${result.scopeNote}<div class="alert-source">試算說明</div></div>`;
+  } else if (module === 'lifeInsuranceNeed') {
+    html = `<div class="big-result">NT$ ${result.total.toLocaleString()}</div>
+      <p class="sub">建議壽險保額（各項需求加總）</p>`;
+    if (result.items.length === 0) {
+      html += `<p class="sub">尚未填寫任何項目，請至少勾選/填寫一項。</p>`;
+    } else {
+      result.items.forEach(item => {
+        html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;">
+          <div class="result-label">${item.label}</div>
+          <div class="mid-result">${item.amount.toLocaleString()}</div>
+          <p class="sub" style="font-size:0.8rem;">${item.detail}</p>
+        </div>`;
+      });
+    }
+    html += `<div class="alert-box">${result.assumptionNote}<div class="alert-source">試算說明</div></div>`;
   }
   resultBody.innerHTML = html;
   lastCopyText = result.copyText || '';
@@ -438,6 +596,17 @@ calcBtn.addEventListener('click', () => {
     }
     if (document.getElementById('f_lifestyle').value === 'custom' && !document.getElementById('f_customAnnualCost').value) {
       errorMsg.textContent = '選擇自訂金額時，請填寫年生活費';
+      errorMsg.classList.remove('hidden');
+      resultArea.classList.add('hidden');
+      return;
+    }
+  }
+
+  // 模組七：本年度贈與總額為必填
+  if (moduleSelect.value === 'giftTax') {
+    const giftTotalVal = document.getElementById('f_giftTotal').value;
+    if (!giftTotalVal) {
+      errorMsg.textContent = '請填寫本年度贈與總額';
       errorMsg.classList.remove('hidden');
       resultArea.classList.add('hidden');
       return;
