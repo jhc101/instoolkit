@@ -1,3 +1,6 @@
+
+
+Index · HTML
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -174,6 +177,8 @@ const templates = {
     <input type="number" id="f_currentAge" inputmode="numeric" step="1">
     <label>預計退休年齡</label>
     <input type="number" id="f_retireAge" inputmode="numeric" step="1">
+    <label>目前已準備金額（元，選填，若尚未開始準備可留空）</label>
+    <input type="number" id="f_currentSavings" inputmode="numeric" step="1">
     <label>自訂投資報酬率 (%)（選填，不填則只比較抽屜與銀行1%定存）</label>
     <input type="number" id="f_customRate" inputmode="decimal" step="0.1">
     <label>每月可投資金額（選填，填寫後會額外反推所需報酬率）</label>
@@ -361,12 +366,14 @@ function buildPayload() {
   if (m === 'retirementPlanning') {
     const customRateVal = document.getElementById('f_customRate').value;
     const monthlyInvestVal = document.getElementById('f_monthlyInvest').value;
+    const currentSavingsVal = document.getElementById('f_currentSavings').value;
     return { module: m, data: {
       lifestyle: document.getElementById('f_lifestyle').value,
       customAnnualCost: document.getElementById('f_lifestyle').value === 'custom'
         ? Number(document.getElementById('f_customAnnualCost').value) : undefined,
       currentAge: Number(document.getElementById('f_currentAge').value),
       retireAge: Number(document.getElementById('f_retireAge').value),
+      currentSavings: currentSavingsVal || undefined,
       customRate: customRateVal || undefined,
       monthlyInvest: monthlyInvestVal || undefined
     }};
@@ -458,8 +465,15 @@ function renderResult(module, result) {
       <div class="alert-box">${result.precisionNote}<div class="alert-source">試算說明</div></div>`;
   } else if (module === 'retirementPlanning') {
     html = `<div class="big-result">NT$ ${result.targetTotal.toLocaleString()}</div>
-      <p class="sub">退休後生活 ${result.yearsInRetirement} 年（${result.retireAge}歲→85歲）・${result.lifestyleLabel}（年 ${result.annualLivingCost.toLocaleString()} 元）</p>
-      <div class="result-row">
+      <p class="sub">退休後生活 ${result.yearsInRetirement} 年（${result.retireAge}歲→85歲）・${result.lifestyleLabel}（年 ${result.annualLivingCost.toLocaleString()} 元）</p>`;
+    if (result.currentSavings > 0) {
+      if (result.alreadySufficient) {
+        html += `<p class="sub">目前已準備 NT$${result.currentSavings.toLocaleString()}，已達成目標，尚需累積金額：NT$0</p>`;
+      } else {
+        html += `<p class="sub">目前已準備 NT$${result.currentSavings.toLocaleString()}（未計息，直接扣除）・尚需累積：NT$${result.netTarget.toLocaleString()}</p>`;
+      }
+    }
+    html += `<div class="result-row">
         <div>
           <div class="result-label">抽屜存錢（每年）</div>
           <div class="mid-result">${result.pmtDrawer.toLocaleString()}</div>
@@ -642,3 +656,8 @@ document.getElementById('copyBtn').addEventListener('click', () => {
 </script>
 </body>
 </html>
+
+
+
+
+
